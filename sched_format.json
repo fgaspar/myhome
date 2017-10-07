@@ -1,0 +1,9 @@
+{"all":[
+        {"start":"20:05",
+         "finish":"20:06",
+         "attr":{"temp_c":16}},
+        {"start":"16:10",
+         "finish":"17:15",
+         "attr":{"temp_c":10}}
+       ]
+}
