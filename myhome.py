@@ -1,9 +1,11 @@
 import argparse
 import datetime
 import time
+import threading
 from temperature import ds18b20
 from switch import onoff
 from scheduler import schedbase
+import Adafruit_CharLCD as LCD
 
 
 MIN_TEMPERATURE_C = 10
@@ -23,12 +25,34 @@ REFRESH_INTERVAL = 15
 ##        ]
 ## }
 
+###########################
+## Arguments
+###########################
+
 parser = argparse.ArgumentParser(description='My home automation.')
 parser.add_argument('--temperature-schedule', metavar='json', type=str,
                     help='Temperature schedule, this is both a read and write pointer.')
 
 args = parser.parse_args()
 
+
+###########################
+## LCD Interface
+###########################
+def interface(lock_sched, temp_sched)
+    lcd.set_color(0.0, 0.0, 1.0)
+    lcd.set_backlight(1)
+    while True :
+        lcd.clear()
+        datetime_now        = datetime.datetime.now()
+        t_sep               = ':' if datetime_now.minute % 2 == 0 else ' '
+        current_time_str    = datetime_now.strftime('%H'+t_sep+'%M')
+        lcd.message(current_time_str)
+
+
+###########################
+## Helper for main control
+###########################
 
 ## compare_hyst_lt
 #    Compare with hysteresis
@@ -59,11 +83,15 @@ def temp_control(current_time, current_temperature, temp_sched, boiler_state):
     return 0
 
 
+###########################
+## Setup
+###########################
+
 temp_attr = {
     'mandatory':('temp_c'),
     'optional':None
 }
-
+lock_sched = threading.Lock()
 temp_sched = schedbase.SchedBase(attr=temp_attr)
 if args.temperature_schedule:
     temp_sched.read_file(args.temperature_schedule)
@@ -73,9 +101,15 @@ boiler_state.set_off() ## for start up safety
 
 temp_obj = ds18b20.ds18b20()
 
+threading.Thread(target=interface, args=(lock_sched, temp_sched))
+
+###########################
 ## Main loop
+###########################
+
 while(True):
-    current_time = datetime.datetime.now().time()
+    datetime_now = datetime.datetime.now()
+    current_time = datetime_now.time()
     current_temperature = temp_obj.read_c()
     ## Temperature control
     print (current_temperature)
