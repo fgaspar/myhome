@@ -14,7 +14,7 @@ TEMP_HYSTERESIS = 1
 REFRESH_INTERVAL = 15
 
 ## Expected temperature json format:
-## 
+##
 ## {"mon":[
 ##         {"start":"12:10",
 ##          "finish":"15:15",
@@ -39,15 +39,24 @@ args = parser.parse_args()
 ###########################
 ## LCD Interface
 ###########################
-def interface(lock_sched, temp_sched)
+def interface(lock_sched, temp_sched):
+    lcd = LCD.Adafruit_CharLCDPlate()
     lcd.set_color(0.0, 0.0, 1.0)
     lcd.set_backlight(1)
+    prev_time_str=""
     while True :
-        lcd.clear()
         datetime_now        = datetime.datetime.now()
-        t_sep               = ':' if datetime_now.minute % 2 == 0 else ' '
+        t_sep               = ':' if datetime_now.second % 2 == 0 else ' '
         current_time_str    = datetime_now.strftime('%H'+t_sep+'%M')
-        lcd.message(current_time_str)
+        for i, c in enumerate(current_time_str):
+            if i<len(prev_time_str) and current_time_str[i] != prev_time_str[i]:
+                lcd.set_cursor(i, 0)
+                lcd.message(current_time_str[i])
+        if current_time_str != prev_time_str:
+            if len(current_time_str) != len(prev_time_str):
+                lcd.clear()
+                lcd.message(current_time_str)
+            prev_time_str = current_time_str
 
 
 ###########################
@@ -101,8 +110,9 @@ boiler_state.set_off() ## for start up safety
 
 temp_obj = ds18b20.ds18b20()
 
-threading.Thread(target=interface, args=(lock_sched, temp_sched))
-
+lcd_controller = threading.Thread(target=interface, args=(lock_sched, temp_sched))
+lcd_controller.daemon = True
+lcd_controller.start()
 ###########################
 ## Main loop
 ###########################
