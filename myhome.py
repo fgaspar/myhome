@@ -12,7 +12,13 @@ MIN_TEMPERATURE_C = 10
 TEMP_HYSTERESIS = 1
 
 REFRESH_INTERVAL_INTERNAL   = 15
-REFRESH_INTERVAL_CONTROLLER = 0.75
+REFRESH_INTERVAL_CONTROLLER = 0.5
+
+## LCD
+NUM_DIFF_UPDATE = 10
+
+##Relay
+BCM_RELAY_PIN = 16
 
 BUTTONS = (LCD.SELECT, LCD.LEFT, LCD.UP, LCD.DOWN, LCD.RIGHT)
 
@@ -42,7 +48,7 @@ args = parser.parse_args()
 ###########################
 ## LCD Interface
 ###########################
-def interface(lock_sched, temp_sched):
+def interface(lock_sched, temp_sched, lock_temp, temp_obj, lock_state, boiler_state):
     lcd            = LCD.Adafruit_CharLCDPlate()
     lcd.set_color(0.0, 0.0, 1.0)
     lcd.set_backlight(1)
@@ -65,23 +71,35 @@ def interface(lock_sched, temp_sched):
             time_prev_use = datetime_now
         if button_lock and not button_press:
             button_lock = False
-        ## This can probably be made into a function with a str corresponding
-        ## to the whole LCD
-        for i, c in enumerate(current_time_str):
-            if i<len(prev_time_str) and current_time_str[i] != prev_time_str[i]:
-                lcd.set_cursor(i, 0)
-                lcd.message(current_time_str[i])
-        if current_time_str != prev_time_str:
-            if len(current_time_str) != len(prev_time_str):
-                lcd.clear()
-                lcd.message(current_time_str)
-            prev_time_str = current_time_str
+
+        with lock_temp:
+            temp = temp_obj.read_c()
+        lcd_str = current_time_str + '   T: ' + '{: 05.1f}'.format(temp) + '\n'
+        with lock_state:
+            state = boiler_state.get_state()
+        state = 'ON' if state else 'OFF'
+        lcd_str = lcd_str + "{: >16}".format(state)
+        update_lcd(current_time_str, prev_time_str)
+        prev_time_str = current_time_str
 
         if datetime_now - time_prev_use > datetime.timedelta(seconds=10):
             in_use = False
             lcd.set_backlight(0)
         if not in_use:
             time.sleep(REFRESH_INTERVAL_CONTROLLER)
+
+def update_lcd(text, text_prev):
+    if (len(text) != len(text_prev)) or
+            (sum([text[i]==text_prev[i] for i in range(len(text_prev))]) > NUM_DIFF_UPDATE):
+        lcd.clear()
+        lcd.message(text)
+    else:
+        for i, c in enumerate(text):
+            if i<len(text_prev) and text[i] != text_prev[i]:
+                lcd.set_cursor(i, 0)
+                lcd.message(text[i])
+
+
 
 
 ###########################
@@ -126,16 +144,19 @@ temp_attr = {
     'optional':None
 }
 lock_sched = threading.Lock()
+lock_temp = threading.Lock()
+lock_state = threading.Lock()
+
 temp_sched = schedbase.SchedBase(attr=temp_attr)
 if args.temperature_schedule:
     temp_sched.read_file(args.temperature_schedule)
 
-boiler_state = onoff.OnOff()
+boiler_state = onoff.OnOff(BCM_RELAY_PIN)
 boiler_state.set_off() ## for start up safety
 
 temp_obj = ds18b20.ds18b20()
 
-lcd_controller = threading.Thread(target=interface, args=(lock_sched, temp_sched))
+lcd_controller = threading.Thread(target=interface, args=(lock_sched, temp_sched, lock_temp, temp_obj, lock_state, boiler_state))
 lcd_controller.daemon = True
 lcd_controller.start()
 ###########################
@@ -145,10 +166,12 @@ lcd_controller.start()
 while(True):
     datetime_now = datetime.datetime.now()
     current_time = datetime_now.time()
-    current_temperature = temp_obj.read_c()
+    with lock_temp:
+        current_temperature = temp_obj.read_c()
     ## Temperature control
     print (current_temperature)
-    temp_control(current_time, current_temperature, temp_sched, boiler_state)
+    with lock_sched, lock_state:
+        temp_control(current_time, current_temperature, temp_sched, boiler_state)
 
     time.sleep(REFRESH_INTERVAL_INTERNAL)
 

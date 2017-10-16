@@ -10,11 +10,19 @@ class Switch(object):
         else:
             self.attr = dict()
 
-    def set_on(self):
+    def _set_on(self):
         self.state = 1
 
-    def set_off(self):
+    def _set_off(self):
         self.state = 0
+
+    def set_on(self):
+        self._set_on()
+        RuntimeError('set_on Not Implemented')
+
+    def set_off(self):
+        self._set_off()
+        RuntimeError('set_off Not Implemented')
 
     def get_state(self):
         return (self.state)

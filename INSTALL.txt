@@ -1,0 +1,17 @@
+## Enable I2C on the pi with raspi-config
+sudo apt-get update
+
+sudo apt-get install -y
+sudo apt-get install -y i2c-tools
+
+sudo apt-get install build-essential python-dev python-smbus python-pip giti2c-tools
+sudo pip install RPi.GPIO
+git clone https://github.com/adafruit/Adafruit_Python_CharLCD.git
+cd Adafruit_Python_CharLCD
+sudo python setup.py install
+
+I should probably fork the above lib
+
+
+sudo apt-get install -y python3-smbus python3-dev python3-pip python3-rpi.gpio python-w1thermsensor python3-w1thermsensor
+sudo python3 setup.py install
