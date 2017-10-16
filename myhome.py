@@ -10,12 +10,14 @@ import Adafruit_CharLCD as LCD
 
 MIN_TEMPERATURE_C = 10
 TEMP_HYSTERESIS = 1
+TEMP_REFRESH_INTERVAL = 2
 
 REFRESH_INTERVAL_INTERNAL   = 15
 REFRESH_INTERVAL_CONTROLLER = 0.5
 
 ## LCD
 NUM_DIFF_UPDATE = 10
+LCD_SLEEP_TIME = 10
 
 ##Relay
 BCM_RELAY_PIN = 16
@@ -53,11 +55,13 @@ def interface(lock_sched, temp_sched, lock_temp, temp_obj, lock_state, boiler_st
     lcd.set_color(0.0, 0.0, 1.0)
     lcd.set_backlight(1)
 
-    prev_time_str  = ""
+    prev_lcd_str  = ""
     in_use         = True
     button_lock    = False
     button_press   = []
     time_prev_use  = datetime.datetime.now()
+    time_prev_temp = datetime.datetime.now()
+    temp = temp_obj.read_c()
     while True :
         datetime_now        = datetime.datetime.now()
         t_sep               = ':' if datetime_now.second % 2 == 0 else ' '
@@ -71,26 +75,27 @@ def interface(lock_sched, temp_sched, lock_temp, temp_obj, lock_state, boiler_st
             time_prev_use = datetime_now
         if button_lock and not button_press:
             button_lock = False
-
-        with lock_temp:
-            temp = temp_obj.read_c()
-        lcd_str = current_time_str + '   T: ' + '{: 05.1f}'.format(temp) + '\n'
+        if datetime_now - time_prev_use > datetime.timedelta(seconds=TEMP_REFRESH_INTERVAL):
+            with lock_temp:
+                temp = temp_obj.read_c()
+            time_prev_use = datetime_now
+        lcd_str = current_time_str + '    T:' + '{: 05.1f}'.format(temp) + '\n'
         with lock_state:
             state = boiler_state.get_state()
         state = 'ON' if state else 'OFF'
         lcd_str = lcd_str + "{: >16}".format(state)
-        update_lcd(current_time_str, prev_time_str)
-        prev_time_str = current_time_str
+        update_lcd(lcd, lcd_str, prev_lcd_str)
+        prev_lcd_str = lcd_str
 
-        if datetime_now - time_prev_use > datetime.timedelta(seconds=10):
+        if datetime_now - time_prev_use > datetime.timedelta(seconds=LCD_SLEEP_TIME):
             in_use = False
             lcd.set_backlight(0)
         if not in_use:
             time.sleep(REFRESH_INTERVAL_CONTROLLER)
 
-def update_lcd(text, text_prev):
-    if (len(text) != len(text_prev)) or
-            (sum([text[i]==text_prev[i] for i in range(len(text_prev))]) > NUM_DIFF_UPDATE):
+def update_lcd(lcd, text, text_prev):
+    if (len(text) != len(text_prev)) or \
+            (sum([text[i]!=text_prev[i] for i in range(len(text_prev))]) > NUM_DIFF_UPDATE):
         lcd.clear()
         lcd.message(text)
     else:
@@ -125,6 +130,8 @@ def temp_control(current_time, current_temperature, temp_sched, boiler_state):
     # Current_target will be none if nothing is scheduled for the current time,
     # otherwise it will return a dict with relevant keys
     current_target = max([x['temp_c'] for x in temp_sched.get_attr_from_time(current_time)]+[MIN_TEMPERATURE_C])
+    print('Current target: {}'.format(current_target))
+
     if compare_hyst_lt(current_temperature, current_target):
         boiler_state.set_on()
         return 0
