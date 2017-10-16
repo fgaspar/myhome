@@ -11,7 +11,10 @@ import Adafruit_CharLCD as LCD
 MIN_TEMPERATURE_C = 10
 TEMP_HYSTERESIS = 1
 
-REFRESH_INTERVAL = 15
+REFRESH_INTERVAL_INTERNAL   = 15
+REFRESH_INTERVAL_CONTROLLER = 0.75
+
+BUTTONS = (LCD.SELECT, LCD.LEFT, LCD.UP, LCD.DOWN, LCD.RIGHT)
 
 ## Expected temperature json format:
 ##
@@ -40,14 +43,30 @@ args = parser.parse_args()
 ## LCD Interface
 ###########################
 def interface(lock_sched, temp_sched):
-    lcd = LCD.Adafruit_CharLCDPlate()
+    lcd            = LCD.Adafruit_CharLCDPlate()
     lcd.set_color(0.0, 0.0, 1.0)
     lcd.set_backlight(1)
-    prev_time_str=""
+
+    prev_time_str  = ""
+    in_use         = True
+    button_lock    = False
+    button_press   = []
+    time_prev_use  = datetime.datetime.now()
     while True :
         datetime_now        = datetime.datetime.now()
         t_sep               = ':' if datetime_now.second % 2 == 0 else ' '
         current_time_str    = datetime_now.strftime('%H'+t_sep+'%M')
+        button_press        = [i for i in BUTTONS if lcd.is_pressed(i)]
+        if not in_use and button_press:
+            in_use      = True
+            button_lock = True
+            lcd.set_backlight(1)
+        if button_press:
+            time_prev_use = datetime_now
+        if button_lock and not button_press:
+            button_lock = False
+        ## This can probably be made into a function with a str corresponding
+        ## to the whole LCD
         for i, c in enumerate(current_time_str):
             if i<len(prev_time_str) and current_time_str[i] != prev_time_str[i]:
                 lcd.set_cursor(i, 0)
@@ -57,6 +76,12 @@ def interface(lock_sched, temp_sched):
                 lcd.clear()
                 lcd.message(current_time_str)
             prev_time_str = current_time_str
+
+        if datetime_now - time_prev_use > datetime.timedelta(seconds=10):
+            in_use = False
+            lcd.set_backlight(0)
+        if not in_use:
+            time.sleep(REFRESH_INTERVAL_CONTROLLER)
 
 
 ###########################
@@ -125,6 +150,6 @@ while(True):
     print (current_temperature)
     temp_control(current_time, current_temperature, temp_sched, boiler_state)
 
-    time.sleep(REFRESH_INTERVAL)
+    time.sleep(REFRESH_INTERVAL_INTERNAL)
 
 
