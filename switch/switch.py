@@ -1,5 +1,8 @@
+import threading
+
 class Switch(object):
     def __init__(self, attr = None):
+        self.lock = threading.Lock()
         self.state = 0
         self.grad = 0.0
         if attr:

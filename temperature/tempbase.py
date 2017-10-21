@@ -1,5 +1,8 @@
+import threading
+
 class TempBase(object):
     def __init__(self):
+        self.lock = threading.Lock()
         pass
     ## read_c
     #   Returns the temeprature in 1/1000 degrees C

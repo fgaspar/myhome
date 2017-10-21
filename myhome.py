@@ -50,7 +50,7 @@ args = parser.parse_args()
 ###########################
 ## LCD Interface
 ###########################
-def interface(lock_sched, temp_sched, lock_temp, temp_obj, lock_state, boiler_state):
+def interface(temp_sched, temp_obj, boiler_state):
     lcd            = LCD.Adafruit_CharLCDPlate()
     lcd.set_color(0.0, 0.0, 1.0)
     lcd.set_backlight(1)
@@ -60,8 +60,6 @@ def interface(lock_sched, temp_sched, lock_temp, temp_obj, lock_state, boiler_st
     button_lock    = False
     button_press   = []
     time_prev_use  = datetime.datetime.now()
-    time_prev_temp = datetime.datetime.now()
-    temp = temp_obj.read_c()
     while True :
         datetime_now        = datetime.datetime.now()
         t_sep               = ':' if datetime_now.second % 2 == 0 else ' '
@@ -75,12 +73,8 @@ def interface(lock_sched, temp_sched, lock_temp, temp_obj, lock_state, boiler_st
             time_prev_use = datetime_now
         if button_lock and not button_press:
             button_lock = False
-        if datetime_now - time_prev_use > datetime.timedelta(seconds=TEMP_REFRESH_INTERVAL):
-            with lock_temp:
-                temp = temp_obj.read_c()
-            time_prev_use = datetime_now
-        lcd_str = current_time_str + '    T:' + '{: 05.1f}'.format(temp) + '\n'
-        with lock_state:
+        lcd_str = current_time_str + '   T:' + '{: 05.1f}c'.format(global_temp['c']) + '\n'
+        with boiler_state.lock:
             state = boiler_state.get_state()
         state = 'ON' if state else 'OFF'
         lcd_str = lcd_str + "{: >16}".format(state)
@@ -104,7 +98,13 @@ def update_lcd(lcd, text, text_prev):
                 lcd.set_cursor(i, 0)
                 lcd.message(text[i])
 
-
+###########################
+## Background updates
+###########################
+def update_global_temp_c(global_temp, temp_obj):
+    while True:
+        global_temp['c'] = temp_obj.read_c()
+        time.sleep(TEMP_REFRESH_INTERVAL)
 
 
 ###########################
@@ -150,9 +150,6 @@ temp_attr = {
     'mandatory':('temp_c'),
     'optional':None
 }
-lock_sched = threading.Lock()
-lock_temp = threading.Lock()
-lock_state = threading.Lock()
 
 temp_sched = schedbase.SchedBase(attr=temp_attr)
 if args.temperature_schedule:
@@ -163,9 +160,16 @@ boiler_state.set_off() ## for start up safety
 
 temp_obj = ds18b20.ds18b20()
 
-lcd_controller = threading.Thread(target=interface, args=(lock_sched, temp_sched, lock_temp, temp_obj, lock_state, boiler_state))
+## This must be a reference due to the update in threading, a dict will do
+global_temp = {'c':temp_obj.read_c()}
+
+lcd_controller = threading.Thread(target=interface, args=(temp_sched, global_temp, boiler_state))
 lcd_controller.daemon = True
 lcd_controller.start()
+
+temp_update = threading.Thread(target=interface, args=(global_temp, temp_obj))
+temp_update.daemon = True
+temp_update.start()
 ###########################
 ## Main loop
 ###########################
@@ -173,11 +177,11 @@ lcd_controller.start()
 while(True):
     datetime_now = datetime.datetime.now()
     current_time = datetime_now.time()
-    with lock_temp:
+    with temp_obj.lock:
         current_temperature = temp_obj.read_c()
     ## Temperature control
     print (current_temperature)
-    with lock_sched, lock_state:
+    with temp_sched.lock, boiler_state.lock:
         temp_control(current_time, current_temperature, temp_sched, boiler_state)
 
     time.sleep(REFRESH_INTERVAL_INTERNAL)

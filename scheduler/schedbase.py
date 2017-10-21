@@ -2,6 +2,7 @@ import datetime
 from datetime import date
 import time
 import json
+import threading
 
 from scheduler import entry
 
@@ -26,6 +27,7 @@ NUM_2_DAY          = {1:'mon',
 
 class SchedBase(object):
     def __init__(self, attr = None):
+        self.lock = threading.Lock()
         if attr:
             if isinstance(attr, dict):
                 self.attr = attr
