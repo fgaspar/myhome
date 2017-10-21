@@ -18,6 +18,7 @@ REFRESH_INTERVAL_CONTROLLER = 0.5
 ## LCD
 NUM_DIFF_UPDATE = 10
 LCD_SLEEP_TIME = 10
+LCD_LINE_SIZE = 16
 
 ##Relay
 BCM_RELAY_PIN = 16
@@ -73,11 +74,11 @@ def interface(temp_sched, temp_obj, boiler_state):
             time_prev_use = datetime_now
         if button_lock and not button_press:
             button_lock = False
-        lcd_str = current_time_str + '   T:' + '{: 05.1f}c'.format(global_temp['c']) + '\n'
+        lcd_str = current_time_str + ' '*5 + '{: >05.1f}c'.format(global_temp['c']) + '\n'
         with boiler_state.lock:
             state = boiler_state.get_state()
         state = 'ON' if state else 'OFF'
-        lcd_str = lcd_str + "{: >16}".format(state)
+        lcd_str = lcd_str + "{:>16}".format(state)
         update_lcd(lcd, lcd_str, prev_lcd_str)
         prev_lcd_str = lcd_str
 
@@ -93,10 +94,12 @@ def update_lcd(lcd, text, text_prev):
         lcd.clear()
         lcd.message(text)
     else:
-        for i, c in enumerate(text):
-            if i<len(text_prev) and text[i] != text_prev[i]:
-                lcd.set_cursor(i, 0)
-                lcd.message(text[i])
+        text_clean = text.replace('\n', '')
+        text_prev_clean = text_prev.replace('\n', '')
+        for i, c in enumerate(text_clean):
+            if i<len(text_prev) and c != text_prev_clean[i]:
+                lcd.set_cursor(i % LCD_LINE_SIZE, i//LCD_LINE_SIZE)
+                lcd.message(c)
 
 ###########################
 ## Background updates
@@ -167,7 +170,7 @@ lcd_controller = threading.Thread(target=interface, args=(temp_sched, global_tem
 lcd_controller.daemon = True
 lcd_controller.start()
 
-temp_update = threading.Thread(target=interface, args=(global_temp, temp_obj))
+temp_update = threading.Thread(target=update_global_temp_c, args=(global_temp, temp_obj))
 temp_update.daemon = True
 temp_update.start()
 ###########################
