@@ -166,13 +166,22 @@ temp_obj = ds18b20.ds18b20()
 ## This must be a reference due to the update in threading, a dict will do
 global_temp = {'c':temp_obj.read_c()}
 
+## Start helper threads
+
+# Print LCD
 lcd_controller = threading.Thread(target=interface, args=(temp_sched, global_temp, boiler_state))
 lcd_controller.daemon = True
 lcd_controller.start()
 
+# Temperature read out
 temp_update = threading.Thread(target=update_global_temp_c, args=(global_temp, temp_obj))
 temp_update.daemon = True
 temp_update.start()
+
+# Schedule read
+
+# Menu tracking
+
 ###########################
 ## Main loop
 ###########################
